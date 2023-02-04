@@ -4,6 +4,7 @@
     "module": "ES2022",
     "rootDir": "./src",
     "outDir": "./dist",
+    "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
@@ -11,5 +12,9 @@
   },
   "exclude": [
     "./node_modules"
-  ]
+  ],
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
 }
