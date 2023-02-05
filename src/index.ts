@@ -2,7 +2,7 @@ import process from 'node:process';
 import fs from 'node:fs';
 import {MongoClient} from 'mongodb';
 import webpush from 'web-push';
-import Fastify from 'fastify';
+import Fastify, {FastifyReply, FastifyRequest} from 'fastify';
 import mime from 'mime-types';
 import {
     MatchEntry,
@@ -15,10 +15,12 @@ import {
 import {fetchResults} from './parser';
 
 
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? "";
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY ?? "";
 const mongoClient = new MongoClient(process.env.MONGO_URL ?? "");
 const db = mongoClient.db(process.env.MONGO_DATABASE ?? "tt-notifications");
+
+webpush.setVapidDetails("http://localhost:8080", vapidPublicKey, vapidPrivateKey);
 
 const subscriberDataCollection = db.collection("subscriber-data");
 const matchListProviderCollection = db.collection("match-list-providers");
@@ -123,8 +125,8 @@ async function notifySubscribers(msg: string) {
 }
 
 const fastify = Fastify({logger: true});
-fastify.get("/:file", async (req, resp) => {
-    const file: string = (req.params as any).file;
+async function serveFile (req: FastifyRequest, resp: FastifyReply) {
+    const file: string = (req.params as any)?.file ?? "index.html";
     if (file.includes("/")) {
         resp.code(400);
         return;
@@ -139,6 +141,11 @@ fastify.get("/:file", async (req, resp) => {
     }).catch(() => {
         resp.code(404).send();
     });
+}
+fastify.get("/", serveFile);
+fastify.get("/:file", serveFile);
+fastify.get("/api/vapidpubkey", (req, resp) => {
+    resp.type("text/plain").send(vapidPublicKey);
 });
 fastify.post("/api/subscribe", (req, resp) => {
     if (typeof req.body != 'object') {
@@ -149,10 +156,11 @@ fastify.post("/api/subscribe", (req, resp) => {
     }
     const data: any = req.body;
     const endpoint = data.endpoint;
-    const authKey = data.key?.auth;
-    const p256dhKey = data.key?.p256dh;
+    const authKey = data.keys?.auth;
+    const p256dhKey = data.keys?.p256dh;
     if (typeof endpoint != 'string' || typeof authKey != 'string' || typeof p256dhKey != 'string') {
         resp.type('application/json').code(400);
+        console.log(data);
         return {
             errmsg: "missing fields or wrong data types"
         };
@@ -168,13 +176,31 @@ fastify.post("/api/subscribe", (req, resp) => {
         });
     });
 });
-fastify.listen({port: 8080}, (err, address) => {
+fastify.post("/api/testmsg", (req, resp) => {
+    if (typeof req.body != 'object') {
+        resp.type('application/json').code(415);
+        return {
+            errmsg: "invalid content type"
+        };
+    }
+    const data: any = req.body;
+    const endpoint = data.endpoint;
+    const authKey = data.keys?.auth;
+    const p256dhKey = data.keys?.p256dh;
+    if (typeof endpoint != 'string' || typeof authKey != 'string' || typeof p256dhKey != 'string') {
+        resp.type('application/json').code(400);
+        return {
+            errmsg: "missing fields or wrong data types"
+        };
+    }
+    const subscriber = new SubscriberData(endpoint, p256dhKey, authKey);
+    webpush.sendNotification(subscriber.toWebPushOptions(), JSON.stringify({msg: "Testnachricht"}), {TTL: 30}).catch(console.error)
+});
+fastify.listen({port: 8080}, err => {
     if (err) throw err;
-    console.log(`HTTP server listening on ${address}`);
 });
 
 // init().catch(console.error);
-
 
 function signalHandler() {
     console.log("Received interrupt. Exiting gracefully ...");

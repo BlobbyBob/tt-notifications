@@ -116,7 +116,6 @@ export class SubscriberData extends Model {
 
     constructor(endpoint: string, p256dhKey: string, authKey: string) {
         super();
-        this.id = new ObjectId();
         this.endpoint = endpoint;
         this.authKey = authKey;
         this.p256dhKey = p256dhKey;
