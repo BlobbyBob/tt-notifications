@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import {ObjectId} from 'mongodb';
+import {PushSubscription} from 'web-push';
 
 abstract class Model {
     private _id?: ObjectId;
@@ -109,31 +110,54 @@ export interface MatchEntryDocument {
 }
 
 export class SubscriberData extends Model {
-    constructor() {
+    endpoint: string;
+    authKey: string;
+    p256dhKey: string;
+
+    constructor(endpoint: string, p256dhKey: string, authKey: string) {
         super();
         this.id = new ObjectId();
+        this.endpoint = endpoint;
+        this.authKey = authKey;
+        this.p256dhKey = p256dhKey;
     }
 
     hash(): Uint8Array {
-        // todo
-        return new Uint8Array(0);
+        const input = this.endpoint + this.authKey + this.p256dhKey;
+        return new Uint8Array(crypto.createHash("md5").update(input).digest()).slice(0, 12);
     }
 
     static fromDocument(doc: SubscriberDataDocument): SubscriberData {
-        const obj = new SubscriberData();
+        const obj = new SubscriberData(doc.endpoint, doc.p256dhKey, doc.authKey);
         obj.id = doc._id;
         return obj;
     }
 
     toDocument(): SubscriberDataDocument {
         return {
-            _id: this.id
+            _id: this.id,
+            endpoint: this.endpoint,
+            authKey: this.authKey,
+            p256dhKey: this.p256dhKey
         };
+    }
+
+    toWebPushOptions(): PushSubscription {
+        return {
+            endpoint: this.endpoint,
+            keys: {
+                auth: this.authKey,
+                p256dh: this.p256dhKey
+            }
+        }
     }
 }
 
 export interface SubscriberDataDocument {
     _id: ObjectId;
+    endpoint: string;
+    authKey: string;
+    p256dhKey: string
 }
 
 export class MatchListProvider extends Model {

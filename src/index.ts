@@ -1,12 +1,24 @@
 import process from 'node:process';
+import fs from 'node:fs';
+import {MongoClient} from 'mongodb';
+import webpush from 'web-push';
+import Fastify from 'fastify';
+import mime from 'mime-types';
+import {
+    MatchEntry,
+    MatchEntryDocument,
+    MatchListProvider,
+    MatchListProviderDocument,
+    SubscriberData,
+    SubscriberDataDocument
+} from './types';
 import {fetchResults} from './parser';
-import {MongoClient, ObjectId} from 'mongodb';
-import {MatchEntry, MatchEntryDocument, MatchListProvider, MatchListProviderDocument} from './types';
 
 
-const dbUrl = "mongodb://localhost:27017";
-const mongoClient = new MongoClient(dbUrl);
-const db = mongoClient.db("tt-notifications");
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+const mongoClient = new MongoClient(process.env.MONGO_URL ?? "");
+const db = mongoClient.db(process.env.MONGO_DATABASE ?? "tt-notifications");
 
 const subscriberDataCollection = db.collection("subscriber-data");
 const matchListProviderCollection = db.collection("match-list-providers");
@@ -55,12 +67,16 @@ async function queryProvider(provider: MatchListProvider) {
     }).forEach(doc => {
         const entry = entriesById.get(doc._id.toHexString());
         if (entry) {
+            const match = entry[0];
             entry[1] = true;
             const oldEntry = MatchEntry.fromDocument(doc as MatchEntryDocument);
-            if (oldEntry.hasResult != entry[0].hasResult ||
-                oldEntry.hasReport != entry[0].hasReport) {
-                // todo notify subscribers
-                // todo what about if this entry belongs to multiple providers?
+            if (oldEntry.hasResult != match.hasResult ||
+                oldEntry.hasReport != match.hasReport) {
+                if (match.hasReport) {
+                    const msg = `Spielbericht für ${match.teamA} - ${match.teamB} (${provider.name}) ist online.`;
+                    notifySubscribers(JSON.stringify({msg}));
+                }
+                // todo multiuser with different subscriptions suppert: what about if this entry belongs to multiple providers?
                 matchEntryCollection.updateOne({_id: doc._id},
                     {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}); // Promise ignored
             }
@@ -96,11 +112,76 @@ async function queryProvider(provider: MatchListProvider) {
     providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, secondsTillNextUpdate * 1000, provider));
 }
 
-init().catch(console.error);
+async function notifySubscribers(msg: string) {
+    const sending: Promise<any>[] = [];
+    await subscriberDataCollection.find().forEach(doc => {
+        const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
+        sending.push(webpush.sendNotification(subscriber.toWebPushOptions(), msg, {TTL: 30}).catch(console.error));
+        // todo on repeated errors delete subscriber
+    });
+    return Promise.all(sending);
+}
+
+const fastify = Fastify({logger: true});
+fastify.get("/:file", async (req, resp) => {
+    const file: string = (req.params as any).file;
+    if (file.includes("/")) {
+        resp.code(400);
+        return;
+    }
+    await new Promise<Buffer>((resolve, reject) => {
+        fs.readFile(`./public/${file}`, (err, data) => {
+            if (err) reject(err);
+            resolve(data);
+        });
+    }).then(data => {
+        resp.type(mime.lookup(file) || "application/octet-stream").code(200).send(data);
+    }).catch(() => {
+        resp.code(404).send();
+    });
+});
+fastify.post("/api/subscribe", (req, resp) => {
+    if (typeof req.body != 'object') {
+        resp.type('application/json').code(415);
+        return {
+            errmsg: "invalid content type"
+        };
+    }
+    const data: any = req.body;
+    const endpoint = data.endpoint;
+    const authKey = data.key?.auth;
+    const p256dhKey = data.key?.p256dh;
+    if (typeof endpoint != 'string' || typeof authKey != 'string' || typeof p256dhKey != 'string') {
+        resp.type('application/json').code(400);
+        return {
+            errmsg: "missing fields or wrong data types"
+        };
+    }
+    const subscriber = new SubscriberData(endpoint, p256dhKey, authKey);
+    subscriberDataCollection.insertOne(subscriber.toDocument()).then(() => {
+        resp.code(201).send();
+    }).catch(err => {
+        console.error(err);
+        resp.type('application/json').code(500);
+        resp.send({
+            errmsg: "could not store subscriber in database"
+        });
+    });
+});
+fastify.listen({port: 8080}, (err, address) => {
+    if (err) throw err;
+    console.log(`HTTP server listening on ${address}`);
+});
+
+// init().catch(console.error);
+
 
 function signalHandler() {
     console.log("Received interrupt. Exiting gracefully ...");
-    mongoClient.close().finally(process.exit);
+    Promise.all([
+        mongoClient.close(),
+        fastify.close()
+    ]).finally(process.exit);
 }
 
 process.on("SIGTERM", signalHandler);
