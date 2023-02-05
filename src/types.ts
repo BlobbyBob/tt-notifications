@@ -57,9 +57,13 @@ export class MatchEntry extends Model {
     }
 
     static fromDocument(doc: MatchEntryDocument) {
-        const obj: MatchEntry = this.constructor(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport);
+        const obj: MatchEntry = new MatchEntry(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport);
         obj.id = doc._id;
         return obj;
+    }
+
+    get hasResult() {
+        return this.result.length > 0;
     }
 
     parseDate() {
@@ -81,20 +85,23 @@ export class MatchEntry extends Model {
     }
 
     toDocument(): MatchEntryDocument {
+        if (!this.date) {
+            this.parseDate();
+        }
         return {
             _id: this.id,
-            date: this.date,
+            date: this.date!,
             teamA: this.teamA,
             teamB: this.teamB,
-            hasResult: this.result.length > 0,
+            hasResult: this.hasResult,
             hasReport: this.hasReport
         };
     }
 }
 
-interface MatchEntryDocument {
+export interface MatchEntryDocument {
     _id: ObjectId;
-    date?: Date;
+    date: Date;
     teamA: string;
     teamB: string;
     hasResult: boolean;
@@ -113,7 +120,7 @@ export class SubscriberData extends Model {
     }
 
     static fromDocument(doc: SubscriberDataDocument): SubscriberData {
-        const obj = this.constructor();
+        const obj = new SubscriberData();
         obj.id = doc._id;
         return obj;
     }
@@ -125,7 +132,7 @@ export class SubscriberData extends Model {
     }
 }
 
-interface SubscriberDataDocument {
+export interface SubscriberDataDocument {
     _id: ObjectId;
 }
 
@@ -133,21 +140,21 @@ export class MatchListProvider extends Model {
     url: string;
     name: string;
     nextUpdate?: Date;
+    errCount = 0;
+
     constructor(url: string, name: string, nextUpdate?: Date) {
         super();
-        this.id = new ObjectId();
         this.url = url;
         this.name = name;
         this.nextUpdate = nextUpdate;
     }
 
     hash(): Uint8Array {
-        // todo
-        return new Uint8Array(0);
+        return new Uint8Array(crypto.createHash("md5").update(this.url).digest()).slice(0, 12);
     }
 
     static fromDocument(doc: MatchListProviderDocument): MatchListProvider {
-        const obj = this.constructor();
+        const obj = new MatchListProvider(doc.url, doc.name, doc.nextUpdate);
         obj.id = doc._id;
         return obj;
     }
@@ -162,7 +169,7 @@ export class MatchListProvider extends Model {
     }
 }
 
-interface MatchListProviderDocument {
+export interface MatchListProviderDocument {
     _id: ObjectId;
     url: string;
     name: string;

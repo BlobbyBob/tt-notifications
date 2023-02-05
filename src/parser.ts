@@ -4,7 +4,7 @@ import render from 'dom-serializer';
 import {ElementType} from 'domelementtype';
 import {MatchEntry} from './types';
 
-export async function fetchResults(url: string) {
+export async function fetchResults(url: string): Promise<MatchEntry[]> {
     const resp = await fetch(url);
     if (resp.status >= 200 && resp.status < 300 && resp.body) {
         const body = await resp.text();
