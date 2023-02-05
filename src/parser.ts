@@ -11,11 +11,11 @@ export async function fetchResults(url: string) {
         const start = body.indexOf("<tbody>"), end = body.indexOf("</tbody>");
         if (start < 0 || end < 0) {
             console.error(`Unknown data format start=${start}, end=${end}`);
-            return;
+            return [];
         }
-        const table = parseTable(body.slice(start + 7, end));
-        console.log(table);
+        return parseTable(body.slice(start + 7, end));
     }
+    return [];
 }
 
 function parseTable(data: string) {
@@ -46,11 +46,11 @@ function parseTable(data: string) {
             lastDate = row[0].split(" ").pop() ?? "";
         }
         let hasReport = row[15].length > 20;
-        table.push(new MatchEntry(lastDate,
-            row[2].split(" ", 2)[0],
+        table.push(new MatchEntry([lastDate,
+            row[2].split(" ", 2)[0]],
             row[6],
             row[8],
-            row[14],
+            row[14].split("\n", 2)[0],
             hasReport))
     }
 
