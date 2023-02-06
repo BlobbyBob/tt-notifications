@@ -27,6 +27,7 @@ export class MatchEntry extends Model {
     teamB: string;
     result: string;
     hasReport: boolean;
+    providers: ObjectId[];
 
     private dateFormat = Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
@@ -40,7 +41,7 @@ export class MatchEntry extends Model {
         timeZone: "Europe/Berlin"
     });
 
-    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean) {
+    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean, providers: ObjectId[]) {
         super();
         if (date instanceof Date) {
             this.date = date;
@@ -55,10 +56,11 @@ export class MatchEntry extends Model {
         this.teamB = teamB;
         this.result = result;
         this.hasReport = hasReport;
+        this.providers = providers;
     }
 
     static fromDocument(doc: MatchEntryDocument) {
-        const obj: MatchEntry = new MatchEntry(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport);
+        const obj: MatchEntry = new MatchEntry(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport, doc.providers);
         obj.id = doc._id;
         return obj;
     }
@@ -81,8 +83,15 @@ export class MatchEntry extends Model {
     }
 
     hash() {
-        const input = this.dateStr + this.timeStr + this.teamA + this.teamB;
+        const input = this.dateStr + this.teamA + this.teamB;
         return new Uint8Array(crypto.createHash("md5").update(input).digest()).slice(0, 12);
+    }
+
+    containsProvider(providerId: ObjectId): boolean {
+        for (const provider of this.providers) {
+            if (provider.equals(providerId)) return true;
+        }
+        return false;
     }
 
     toDocument(): MatchEntryDocument {
@@ -95,7 +104,8 @@ export class MatchEntry extends Model {
             teamA: this.teamA,
             teamB: this.teamB,
             hasResult: this.hasResult,
-            hasReport: this.hasReport
+            hasReport: this.hasReport,
+            providers: this.providers
         };
     }
 }
@@ -107,6 +117,7 @@ export interface MatchEntryDocument {
     teamB: string;
     hasResult: boolean;
     hasReport: boolean;
+    providers: ObjectId[];
 }
 
 export class SubscriberData extends Model {
@@ -132,6 +143,13 @@ export class SubscriberData extends Model {
         obj.id = doc._id;
         obj.subscriptions = doc.subscriptions;
         return obj;
+    }
+
+    containsProvider(providerId: ObjectId): boolean {
+        for (const subscription of this.subscriptions) {
+            if (subscription.equals(providerId)) return true;
+        }
+        return false;
     }
 
     toDocument(): SubscriberDataDocument {

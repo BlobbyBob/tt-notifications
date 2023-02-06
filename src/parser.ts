@@ -2,10 +2,11 @@ import * as htmlparser2 from 'htmlparser2';
 import * as domutils from 'domutils';
 import render from 'dom-serializer';
 import {ElementType} from 'domelementtype';
-import {MatchEntry} from './types';
+import {MatchEntry, MatchListProvider} from './types';
+import {ObjectId} from 'mongodb';
 
-export async function fetchResults(url: string): Promise<MatchEntry[]> {
-    const resp = await fetch(url);
+export async function fetchResults(provider: MatchListProvider): Promise<MatchEntry[]> {
+    const resp = await fetch(provider.url);
     if (resp.status >= 200 && resp.status < 300 && resp.body) {
         const body = await resp.text();
         const start = body.indexOf("<tbody>"), end = body.indexOf("</tbody>");
@@ -13,12 +14,12 @@ export async function fetchResults(url: string): Promise<MatchEntry[]> {
             console.error(`Unknown data format start=${start}, end=${end}`);
             return [];
         }
-        return parseTable(body.slice(start + 7, end));
+        return parseTable(body.slice(start + 7, end), provider.id);
     }
     return [];
 }
 
-function parseTable(data: string) {
+function parseTable(data: string, providerId: ObjectId) {
     const dom = htmlparser2.parseDocument(data);
     const raw: string[][] = [];
     for (const tr of dom.children) {
@@ -51,7 +52,8 @@ function parseTable(data: string) {
             row[6],
             row[8],
             row[14].split("\n", 2)[0],
-            hasReport))
+            hasReport,
+            [providerId]))
     }
 
     return table;

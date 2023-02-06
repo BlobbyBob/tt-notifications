@@ -1,6 +1,6 @@
 import process from 'node:process';
 import fs from 'node:fs';
-import {MongoClient, ObjectId} from 'mongodb';
+import {MongoClient, ObjectId, UpdateResult} from 'mongodb';
 import webpush from 'web-push';
 import Fastify, {FastifyReply, FastifyRequest} from 'fastify';
 import mime from 'mime-types';
@@ -46,20 +46,23 @@ async function queryProvider(provider: MatchListProvider) {
     console.log(`Querying provider ${provider.name}`);
     let entries: MatchEntry[] | undefined;
     try {
-        entries = await fetchResults(provider.url);
+        entries = await fetchResults(provider);
     } catch (e) {
         if (provider.errCount < 3) {
-            console.warn(`Error querying provider ${provider.name}. Retrying in 1h`);
+            console.warn(`Error querying provider ${provider.name}. Retrying in 3h`);
             provider.errCount += 1;
-            providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, 3600000, provider));
+            providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, 10800000, provider));
         } else {
             console.error(`Error querying provider ${provider.name}. Giving up`);
             providerTimers.set(provider.id.toHexString(), undefined);
+            // todo handling
         }
         return;
     }
 
     const entriesById = new Map<string, [MatchEntry, boolean]>(entries.map(e => [e.id.toHexString(), [e, false]]));
+
+    const updates: Promise<UpdateResult>[] = [];
 
     // Add new entries to DB
     await matchEntryCollection.find({
@@ -72,18 +75,24 @@ async function queryProvider(provider: MatchListProvider) {
             const match = entry[0];
             entry[1] = true;
             const oldEntry = MatchEntry.fromDocument(doc as MatchEntryDocument);
+            if (!oldEntry.containsProvider(provider.id)) {
+                oldEntry.providers.push(provider.id);
+                updates.push(matchEntryCollection.updateOne({_id: doc._id},
+                    {providers: oldEntry.providers}));
+            }
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
                     const msg = `Spielbericht für ${match.teamA} - ${match.teamB} (${provider.name}) ist online.`;
-                    notifySubscribers(JSON.stringify({msg}));
+                    notifySubscribers(oldEntry.providers, JSON.stringify({msg}));
                 }
-                // todo multiuser with different subscriptions suppert: what about if this entry belongs to multiple providers?
-                matchEntryCollection.updateOne({_id: doc._id},
-                    {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}); // Promise ignored
+                updates.push(matchEntryCollection.updateOne({_id: doc._id},
+                    {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}));
             }
         }
     });
+
+    await Promise.all(updates);
 
     const toInsert: MatchEntry[] = [];
     entriesById.forEach(value => {
@@ -114,9 +123,11 @@ async function queryProvider(provider: MatchListProvider) {
     providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, secondsTillNextUpdate * 1000, provider));
 }
 
-async function notifySubscribers(msg: string) {
+async function notifySubscribers(providers: ObjectId[], msg: string) {
     const sending: Promise<any>[] = [];
-    await subscriberDataCollection.find().forEach(doc => {
+    await subscriberDataCollection.find({
+        providers: {$in: providers}
+    }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
         sending.push(webpush.sendNotification(subscriber.toWebPushOptions(), msg, {TTL: 30}).catch(console.error));
         // todo on repeated errors delete subscriber
@@ -186,11 +197,7 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
         return {errmsg: "Not Found"};
     }
     const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
-    let isAlreadySubscribed = false;
-    subscriber.subscriptions.forEach(v => {
-        if (v.equals(providerDoc._id)) isAlreadySubscribed = true;
-    });
-    if (!isAlreadySubscribed) {
+    if (!subscriber.containsProvider(providerDoc._id)) {
         subscriber.subscriptions.push(providerDoc._id);
         await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
     }
@@ -217,11 +224,11 @@ fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
         return {errmsg: "Not Found"};
     }
     const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
-    let index = -1;
-    subscriber.subscriptions.forEach((v, i) => {
-        if (v.equals(id)) index = i;
-    });
-    if (index >= 0) {
+    let index;
+    for (index = 0; index < subscriber.subscriptions.length; index++) {
+        if (subscriber.subscriptions[index].equals(id)) break;
+    }
+    if (index < subscriber.subscriptions.length) {
         subscriber.subscriptions.splice(index, 1);
         await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
     }
