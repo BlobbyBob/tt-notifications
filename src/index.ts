@@ -180,6 +180,20 @@ fastify.get("/api/vapidpubkey", (req, resp) => {
 });
 
 fastify.get("/api/providers", async (req, resp) => {
+    let subscriber: SubscriberData;
+    try {
+        let uid = new ObjectId(req.headers.authorization);
+        let doc = await subscriberDataCollection.findOne({_id: uid});
+        if (!doc) {
+            resp.code(403).type("application/json");
+            return {errmsg: "not authorized"};
+        }
+        subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
+    } catch (e) {
+        resp.code(404).type("application/json");
+        return {errmsg: "not found"};
+    }
+
     const providers: MatchListProviderDocument[] = [];
     await matchListProviderCollection.find().forEach(doc => {
         providers.push(doc as MatchListProviderDocument);
@@ -187,7 +201,10 @@ fastify.get("/api/providers", async (req, resp) => {
 
     resp.type("application/json");
     return providers.map(provider => {
-        const out: any = Object.assign({id: provider._id.toHexString()}, provider);
+        const out: any = Object.assign({
+            id: provider._id.toHexString(),
+            subscribed: subscriber.containsProvider(provider._id)
+        }, provider);
         delete out.id;
         return out;
     });

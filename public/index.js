@@ -14,8 +14,7 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
-// todo store in localstorage, confirm message if found
-
+let uid = localStorage.getItem("uid");
 let globalSubscription;
 (() => {
     let sub = localStorage.getItem("subscription");
@@ -43,13 +42,19 @@ function getOrCreateSubscription() {
     });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    const activateButton = document.getElementById("activate");
-    const testButton = document.getElementById("test");
+function setStatus(msg) {
     const statusSpan = document.getElementById("status");
     if (statusSpan) {
-        statusSpan.innerText = globalSubscription ? "Bereits aktiviert" : "Noch nicht aktiviert";
+        statusSpan.innerText = msg;
     }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    setStatus(globalSubscription ? "Bereits aktiviert" : "Noch nicht aktiviert");
+
+    const activateButton = document.getElementById("activate");
+    const testButton = document.getElementById("test");
+    const loadProviderButton = document.getElementById("loadProvider");
     if (activateButton) {
         activateButton.addEventListener("click", () => {
             getOrCreateSubscription().then(subscription => {
@@ -59,9 +64,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify(subscription)
-                }).then(resp => resp.json()).then(resp => {
-                    localStorage.setItem("uid", resp.uid);
-                }); // todo .then(successMessage)
+                }).then(resp => resp.json()).then(data => {
+                    uid = data.uid;
+                    localStorage.setItem("uid", uid);
+                    setStatus("Erfolgreich aktiviert");
+                }).catch(() => {
+                    setStatus("Aktivierung fehlgeschlagen");
+                });
             });
         });
         activateButton.removeAttribute("disabled");
@@ -77,7 +86,33 @@ document.addEventListener("DOMContentLoaded", () => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify(globalSubscription)
+            }).then((resp) => {
+                if (resp.status < 300)
+                    setStatus("Testnachricht verschickt");
+                else
+                    setStatus("Fehler beim Verschicken.");
+            });
+        });
+    }
+    if (loadProviderButton) {
+        loadProviderButton.addEventListener("click", () => {
+            fetch('/api/providers', {
+                method: "get",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": uid
+                }
+            }).then((resp) => {
+                if (resp.status < 300) setStatus("Provider geladen");
+                else setStatus("Fehler beim Laden.");
+                return resp.json()
+            }).then(data => {
+                buildProviderTable(data);
             });
         });
     }
 });
+
+function buildProviderTable(data) {
+    const table = document.createElement("table");
+}
