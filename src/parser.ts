@@ -32,7 +32,7 @@ export async function validateUrl(html: string): Promise<[string, number]> {
         }
         title = title.replace(" -", "").trim();
 
-        // Parse data table
+        // Check data table
         {
             const start = html.indexOf("<tbody>"), end = html.indexOf("</tbody>");
             if (start < 0 || end < 0) {

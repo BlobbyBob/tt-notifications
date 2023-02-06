@@ -13,6 +13,7 @@ import {
     SubscriberDataDocument
 } from './types';
 import {fetchResults, validateUrl} from './parser';
+import {clearTimeout} from 'timers';
 
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? "";
@@ -30,14 +31,20 @@ type Timer = ReturnType<typeof setTimeout>;
 
 const providerTimers = new Map<string, Timer | undefined>();
 
+async function scheduleQueryProvider(seconds: number, provider: MatchListProvider) {
+    providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, seconds * 1000, provider));
+    provider.nextUpdate = new Date((new Date()).getTime() + seconds * 1000);
+    await matchListProviderCollection.updateOne({_id: provider.id}, {nextUpdate: provider.nextUpdate});
+}
+
 async function init() {
     await matchListProviderCollection.find().forEach(doc => {
         const provider = MatchListProvider.fromDocument(doc as MatchListProviderDocument);
         if (provider.nextUpdate && provider.nextUpdate.getTime() - (new Date()).getTime() > 0) {
             const diff = provider.nextUpdate.getTime() - (new Date()).getTime();
-            providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, diff, provider));
+            scheduleQueryProvider(diff, provider).catch(console.error);
         } else {
-            providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, Math.random() * 10000, provider));
+            scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
         }
     });
 }
@@ -51,11 +58,10 @@ async function queryProvider(provider: MatchListProvider) {
         if (provider.errCount < 3) {
             console.warn(`Error querying provider ${provider.name}. Retrying in 3h`);
             provider.errCount += 1;
-            providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, 10800000, provider));
+            scheduleQueryProvider(10800, provider).catch(console.error);
         } else {
             console.error(`Error querying provider ${provider.name}. Giving up`);
-            providerTimers.set(provider.id.toHexString(), undefined);
-            // todo handling
+            scheduleQueryProvider(86400, provider).catch(console.error);
         }
         return;
     }
@@ -120,7 +126,7 @@ async function queryProvider(provider: MatchListProvider) {
             }
         }
     });
-    providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, secondsTillNextUpdate * 1000, provider));
+    scheduleQueryProvider(secondsTillNextUpdate, provider).catch(console.error);
 }
 
 async function notifySubscribers(providers: ObjectId[], msg: string) {
@@ -133,6 +139,17 @@ async function notifySubscribers(providers: ObjectId[], msg: string) {
         // todo on repeated errors delete subscriber
     });
     return Promise.all(sending);
+}
+
+async function cleanupProvider(providerId: ObjectId) {
+    const doc = await matchListProviderCollection.findOne({_id: providerId});
+    if (doc) {
+        if (await subscriberDataCollection.countDocuments({subscriptions: providerId}) == 0) {
+            if (providerTimers.has(providerId.toHexString()))
+                clearTimeout(providerTimers.get(providerId.toHexString()));
+            await matchListProviderCollection.deleteOne({_id: providerId});
+        }
+    }
 }
 
 const fastify = Fastify({logger: true});
@@ -177,12 +194,11 @@ fastify.get("/api/providers", async (req, resp) => {
 });
 
 fastify.post("/api/providers", async (req, resp) => {
-    // todo maximum of 100 providers allowed
     let url = (req.body as any).url;
     if (typeof url != "string" ||
         url.slice(0, 37) != "https://www.mytischtennis.de/clicktt/" ||
         url.indexOf("spielplan") < 0) {
-        return {errmsg: "Invalid link"};
+        return {errmsg: "invalid link"};
     }
     url = url.replace("/vr", "/gesamt").replace("/rr", "/gesamt");
     const testFetch = await fetch(url).then(r => r.text()).catch(() => {
@@ -193,20 +209,24 @@ fastify.post("/api/providers", async (req, resp) => {
     const [name, matchCount] = await validateUrl(testFetch);
     if (name != "" && matchCount > 0) {
         const provider = new MatchListProvider(url, name);
+        if (await matchListProviderCollection.estimatedDocumentCount() > 100) {
+            resp.code(402).type("application/json");
+            return {errmsg: "provider limit reached"};
+        }
         await matchListProviderCollection.insertOne(provider.toDocument());
-        providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, Math.random() * 10000, provider));
+        scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
         resp.code(201).type("application/json");
         return {id: provider.id.toHexString(), url, name};
     } else {
         resp.code(400).type("application/json");
-        return {errmsg: "Invalid page"};
+        return {errmsg: "invalid page"};
     }
 });
 
 fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
     if (!("uid" in (req.body as Object))) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
 
     let id, uid;
@@ -215,7 +235,7 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
         uid = new ObjectId((req.body as any).uid);
     } catch (e) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
     const [subscriberDoc, providerDoc] = await Promise.all([
         subscriberDataCollection.findOne({_id: uid}),
@@ -223,7 +243,7 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
     ]);
     if (!subscriberDoc || !providerDoc) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
     const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
     if (!subscriber.containsProvider(providerDoc._id)) {
@@ -234,10 +254,9 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
     return;
 });
 fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
-    // todo cleanup providers without subscribers
     if (!("uid" in (req.body as Object))) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
 
     let id: ObjectId, uid: ObjectId;
@@ -246,12 +265,12 @@ fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
         uid = new ObjectId((req.body as any).uid);
     } catch (e) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
     const subscriberDoc = await subscriberDataCollection.findOne({_id: uid});
     if (!subscriberDoc) {
         resp.code(404).type("application/json");
-        return {errmsg: "Not Found"};
+        return {errmsg: "not found"};
     }
     const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
     let index;
@@ -261,6 +280,7 @@ fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
     if (index < subscriber.subscriptions.length) {
         subscriber.subscriptions.splice(index, 1);
         await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
+        cleanupProvider(id).catch(console.error);
     }
     resp.code(204);
     return;
