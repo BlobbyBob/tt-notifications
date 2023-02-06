@@ -12,7 +12,7 @@ import {
     SubscriberData,
     SubscriberDataDocument
 } from './types';
-import {fetchResults} from './parser';
+import {fetchResults, validateUrl} from './parser';
 
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? "";
@@ -157,9 +157,11 @@ async function serveFile(req: FastifyRequest, resp: FastifyReply) {
 
 fastify.get("/", serveFile);
 fastify.get("/:file", serveFile);
+
 fastify.get("/api/vapidpubkey", (req, resp) => {
     resp.type("text/plain").send(vapidPublicKey);
 });
+
 fastify.get("/api/providers", async (req, resp) => {
     const providers: MatchListProviderDocument[] = [];
     await matchListProviderCollection.find().forEach(doc => {
@@ -172,6 +174,33 @@ fastify.get("/api/providers", async (req, resp) => {
         delete out.id;
         return out;
     });
+});
+
+fastify.post("/api/providers", async (req, resp) => {
+    // todo maximum of 100 providers allowed
+    let url = (req.body as any).url;
+    if (typeof url != "string" ||
+        url.slice(0, 37) != "https://www.mytischtennis.de/clicktt/" ||
+        url.indexOf("spielplan") < 0) {
+        return {errmsg: "Invalid link"};
+    }
+    url = url.replace("/vr", "/gesamt").replace("/rr", "/gesamt");
+    const testFetch = await fetch(url).then(r => r.text()).catch(() => {
+        resp.code(400).type("application/json");
+        return;
+    });
+    if (!testFetch) return {errmsg: "Invalid page"};
+    const [name, matchCount] = await validateUrl(testFetch);
+    if (name != "" && matchCount > 0) {
+        const provider = new MatchListProvider(url, name);
+        await matchListProviderCollection.insertOne(provider.toDocument());
+        providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, Math.random() * 10000, provider));
+        resp.code(201).type("application/json");
+        return {id: provider.id.toHexString(), url, name};
+    } else {
+        resp.code(400).type("application/json");
+        return {errmsg: "Invalid page"};
+    }
 });
 
 fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
@@ -205,6 +234,7 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
     return;
 });
 fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
+    // todo cleanup providers without subscribers
     if (!("uid" in (req.body as Object))) {
         resp.code(404).type("application/json");
         return {errmsg: "Not Found"};

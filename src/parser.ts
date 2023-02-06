@@ -5,6 +5,11 @@ import {ElementType} from 'domelementtype';
 import {MatchEntry, MatchListProvider} from './types';
 import {ObjectId} from 'mongodb';
 
+export async function validateUrl(url: string): Promise<[string, number]> {
+    // todo
+    return ["", 0];
+}
+
 export async function fetchResults(provider: MatchListProvider): Promise<MatchEntry[]> {
     const resp = await fetch(provider.url);
     if (resp.status >= 200 && resp.status < 300 && resp.body) {
