@@ -1,6 +1,6 @@
 import process from 'node:process';
 import fs from 'node:fs';
-import {MongoClient} from 'mongodb';
+import {MongoClient, ObjectId} from 'mongodb';
 import webpush from 'web-push';
 import Fastify, {FastifyReply, FastifyRequest} from 'fastify';
 import mime from 'mime-types';
@@ -20,7 +20,7 @@ const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY ?? "";
 const mongoClient = new MongoClient(process.env.MONGO_URL ?? "");
 const db = mongoClient.db(process.env.MONGO_DATABASE ?? "tt-notifications");
 
-webpush.setVapidDetails("http://localhost:8080", vapidPublicKey, vapidPrivateKey);
+webpush.setVapidDetails(process.env.ORIGIN ?? "", vapidPublicKey, vapidPrivateKey);
 
 const subscriberDataCollection = db.collection("subscriber-data");
 const matchListProviderCollection = db.collection("match-list-providers");
@@ -125,7 +125,8 @@ async function notifySubscribers(msg: string) {
 }
 
 const fastify = Fastify({logger: true});
-async function serveFile (req: FastifyRequest, resp: FastifyReply) {
+
+async function serveFile(req: FastifyRequest, resp: FastifyReply) {
     const file: string = (req.params as any)?.file ?? "index.html";
     if (file.includes("/")) {
         resp.code(400);
@@ -142,38 +143,128 @@ async function serveFile (req: FastifyRequest, resp: FastifyReply) {
         resp.code(404).send();
     });
 }
+
 fastify.get("/", serveFile);
 fastify.get("/:file", serveFile);
 fastify.get("/api/vapidpubkey", (req, resp) => {
     resp.type("text/plain").send(vapidPublicKey);
 });
+fastify.get("/api/providers", async (req, resp) => {
+    const providers: MatchListProviderDocument[] = [];
+    await matchListProviderCollection.find().forEach(doc => {
+        providers.push(doc as MatchListProviderDocument);
+    });
+
+    resp.type("application/json");
+    return providers.map(provider => {
+        const out: any = Object.assign({id: provider._id.toHexString()}, provider);
+        delete out.id;
+        return out;
+    });
+});
+
+fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
+    if (!("uid" in (req.body as Object))) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+
+    let id, uid;
+    try {
+        id = new ObjectId((req.params as any).provider);
+        uid = new ObjectId((req.body as any).uid);
+    } catch (e) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+    const [subscriberDoc, providerDoc] = await Promise.all([
+        subscriberDataCollection.findOne({_id: uid}),
+        matchListProviderCollection.findOne({_id: id})
+    ]);
+    if (!subscriberDoc || !providerDoc) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+    const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
+    let isAlreadySubscribed = false;
+    subscriber.subscriptions.forEach(v => {
+        if (v.equals(providerDoc._id)) isAlreadySubscribed = true;
+    });
+    if (!isAlreadySubscribed) {
+        subscriber.subscriptions.push(providerDoc._id);
+        await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
+    }
+    resp.code(204);
+    return;
+});
+fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
+    if (!("uid" in (req.body as Object))) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+
+    let id: ObjectId, uid: ObjectId;
+    try {
+        id = new ObjectId((req.params as any).provider);
+        uid = new ObjectId((req.body as any).uid);
+    } catch (e) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+    const subscriberDoc = await subscriberDataCollection.findOne({_id: uid});
+    if (!subscriberDoc) {
+        resp.code(404).type("application/json");
+        return {errmsg: "Not Found"};
+    }
+    const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
+    let index = -1;
+    subscriber.subscriptions.forEach((v, i) => {
+        if (v.equals(id)) index = i;
+    });
+    if (index >= 0) {
+        subscriber.subscriptions.splice(index, 1);
+        await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
+    }
+    resp.code(204);
+    return;
+});
 fastify.post("/api/subscribe", (req, resp) => {
     if (typeof req.body != 'object') {
-        resp.type('application/json').code(415);
-        return {
-            errmsg: "invalid content type"
-        };
+        resp.type('application/json')
+            .code(415)
+            .send({errmsg: "invalid content type"});
+        return;
     }
     const data: any = req.body;
     const endpoint = data.endpoint;
     const authKey = data.keys?.auth;
     const p256dhKey = data.keys?.p256dh;
     if (typeof endpoint != 'string' || typeof authKey != 'string' || typeof p256dhKey != 'string') {
-        resp.type('application/json').code(400);
+        resp.type('application/json')
+            .code(400)
+            .send({errmsg: "missing fields or wrong data types"});
         console.log(data);
-        return {
-            errmsg: "missing fields or wrong data types"
-        };
+        return;
     }
     const subscriber = new SubscriberData(endpoint, p256dhKey, authKey);
-    subscriberDataCollection.insertOne(subscriber.toDocument()).then(() => {
-        resp.code(201).send();
+    subscriberDataCollection.findOne({_id: subscriber.id}).then(doc => {
+        if (doc) {
+            resp.type('application/json')
+                .code(200)
+                .send({uid: subscriber.id.toHexString()});
+        } else {
+            return subscriberDataCollection.insertOne(subscriber.toDocument()).then(() => {
+                resp.type('application/json')
+                    .code(201)
+                    .send({uid: subscriber.id.toHexString()});
+            });
+        }
     }).catch(err => {
         console.error(err);
-        resp.type('application/json').code(500);
-        resp.send({
-            errmsg: "could not store subscriber in database"
-        });
+        resp.type('application/json')
+            .code(500)
+            .send({errmsg: "could not store subscriber in database"});
+        return;
     });
 });
 fastify.post("/api/testmsg", (req, resp) => {
@@ -194,7 +285,7 @@ fastify.post("/api/testmsg", (req, resp) => {
         };
     }
     const subscriber = new SubscriberData(endpoint, p256dhKey, authKey);
-    webpush.sendNotification(subscriber.toWebPushOptions(), JSON.stringify({msg: "Testnachricht"}), {TTL: 30}).catch(console.error)
+    webpush.sendNotification(subscriber.toWebPushOptions(), JSON.stringify({msg: "Testnachricht"}), {TTL: 30}).catch(console.error);
 });
 fastify.listen({port: 8080}, err => {
     if (err) throw err;

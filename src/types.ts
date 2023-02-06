@@ -113,6 +113,7 @@ export class SubscriberData extends Model {
     endpoint: string;
     authKey: string;
     p256dhKey: string;
+    subscriptions: ObjectId[] = [];
 
     constructor(endpoint: string, p256dhKey: string, authKey: string) {
         super();
@@ -129,6 +130,7 @@ export class SubscriberData extends Model {
     static fromDocument(doc: SubscriberDataDocument): SubscriberData {
         const obj = new SubscriberData(doc.endpoint, doc.p256dhKey, doc.authKey);
         obj.id = doc._id;
+        obj.subscriptions = doc.subscriptions;
         return obj;
     }
 
@@ -137,7 +139,8 @@ export class SubscriberData extends Model {
             _id: this.id,
             endpoint: this.endpoint,
             authKey: this.authKey,
-            p256dhKey: this.p256dhKey
+            p256dhKey: this.p256dhKey,
+            subscriptions: this.subscriptions
         };
     }
 
@@ -156,7 +159,8 @@ export interface SubscriberDataDocument {
     _id: ObjectId;
     endpoint: string;
     authKey: string;
-    p256dhKey: string
+    p256dhKey: string;
+    subscriptions: ObjectId[];
 }
 
 export class MatchListProvider extends Model {

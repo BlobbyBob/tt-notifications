@@ -59,6 +59,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify(subscription)
+                }).then(resp => resp.json()).then(resp => {
+                    localStorage.setItem("uid", resp.uid);
                 }); // todo .then(successMessage)
             });
         });
