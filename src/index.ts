@@ -34,7 +34,7 @@ const providerTimers = new Map<string, Timer | undefined>();
 async function scheduleQueryProvider(seconds: number, provider: MatchListProvider) {
     providerTimers.set(provider.id.toHexString(), setTimeout(queryProvider, seconds * 1000, provider));
     provider.nextUpdate = new Date((new Date()).getTime() + seconds * 1000);
-    await matchListProviderCollection.updateOne({_id: provider.id}, {nextUpdate: provider.nextUpdate});
+    await matchListProviderCollection.updateOne({_id: provider.id}, {$set: {nextUpdate: provider.nextUpdate}});
 }
 
 async function init() {
@@ -84,7 +84,7 @@ async function queryProvider(provider: MatchListProvider) {
             if (!oldEntry.containsProvider(provider.id)) {
                 oldEntry.providers.push(provider.id);
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
-                    {providers: oldEntry.providers}));
+                    {$set: {providers: oldEntry.providers}}));
             }
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
@@ -93,7 +93,7 @@ async function queryProvider(provider: MatchListProvider) {
                     notifySubscribers(oldEntry.providers, JSON.stringify({msg}));
                 }
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
-                    {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}));
+                    {$set: {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}}));
             }
         }
     });
@@ -155,9 +155,10 @@ async function cleanupProvider(providerId: ObjectId) {
 const fastify = Fastify({logger: true});
 
 async function serveFile(req: FastifyRequest, resp: FastifyReply) {
-    const file: string = (req.params as any)?.file ?? "index.html";
-    if (file.includes("/")) {
-        resp.code(400);
+    let file = req.url.slice(1);
+    if (!file) file = "index.html";
+    if (file.includes("..")) {
+        resp.code(404);
         return;
     }
     await new Promise<Buffer>((resolve, reject) => {
@@ -172,8 +173,7 @@ async function serveFile(req: FastifyRequest, resp: FastifyReply) {
     });
 }
 
-fastify.get("/", serveFile);
-fastify.get("/:file", serveFile);
+fastify.setNotFoundHandler(serveFile);
 
 fastify.get("/api/vapidpubkey", (req, resp) => {
     resp.type("text/plain").send(vapidPublicKey);
@@ -205,7 +205,7 @@ fastify.get("/api/providers", async (req, resp) => {
             id: provider._id.toHexString(),
             subscribed: subscriber.containsProvider(provider._id)
         }, provider);
-        delete out.id;
+        delete out._id;
         return out;
     });
 });
@@ -241,62 +241,68 @@ fastify.post("/api/providers", async (req, resp) => {
 });
 
 fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
-    if (!("uid" in (req.body as Object))) {
-        resp.code(404).type("application/json");
-        return {errmsg: "not found"};
-    }
-
-    let id, uid;
+    let subscriber: SubscriberData;
     try {
-        id = new ObjectId((req.params as any).provider);
-        uid = new ObjectId((req.body as any).uid);
+        let uid = new ObjectId(req.headers.authorization);
+        let doc = await subscriberDataCollection.findOne({_id: uid});
+        if (!doc) {
+            resp.code(403).type("application/json");
+            return {errmsg: "not authorized"};
+        }
+        subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
     } catch (e) {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
     }
-    const [subscriberDoc, providerDoc] = await Promise.all([
-        subscriberDataCollection.findOne({_id: uid}),
-        matchListProviderCollection.findOne({_id: id})
-    ]);
-    if (!subscriberDoc || !providerDoc) {
+
+    let id;
+    try {
+        id = new ObjectId((req.params as any).provider);
+    } catch (e) {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
     }
-    const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
+    const providerDoc = await         matchListProviderCollection.findOne({_id: id})
+    if (!providerDoc) {
+        resp.code(404).type("application/json");
+        return {errmsg: "not found"};
+    }
     if (!subscriber.containsProvider(providerDoc._id)) {
         subscriber.subscriptions.push(providerDoc._id);
-        await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
+        await subscriberDataCollection.replaceOne({_id: subscriber.id}, subscriber.toDocument());
     }
     resp.code(204);
     return;
 });
 fastify.post("/api/provider/:provider/unsubscribe", async (req, resp) => {
-    if (!("uid" in (req.body as Object))) {
-        resp.code(404).type("application/json");
-        return {errmsg: "not found"};
-    }
-
-    let id: ObjectId, uid: ObjectId;
+    let subscriber: SubscriberData;
     try {
-        id = new ObjectId((req.params as any).provider);
-        uid = new ObjectId((req.body as any).uid);
+        let uid = new ObjectId(req.headers.authorization);
+        let doc = await subscriberDataCollection.findOne({_id: uid});
+        if (!doc) {
+            resp.code(403).type("application/json");
+            return {errmsg: "not authorized"};
+        }
+        subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
     } catch (e) {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
     }
-    const subscriberDoc = await subscriberDataCollection.findOne({_id: uid});
-    if (!subscriberDoc) {
+
+    let id: ObjectId;
+    try {
+        id = new ObjectId((req.params as any).provider);
+    } catch (e) {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
     }
-    const subscriber = SubscriberData.fromDocument(subscriberDoc as SubscriberDataDocument);
     let index;
     for (index = 0; index < subscriber.subscriptions.length; index++) {
         if (subscriber.subscriptions[index].equals(id)) break;
     }
     if (index < subscriber.subscriptions.length) {
         subscriber.subscriptions.splice(index, 1);
-        await subscriberDataCollection.updateOne({_id: subscriber.id}, subscriber.toDocument());
+        await subscriberDataCollection.replaceOne({_id: subscriber.id}, subscriber.toDocument());
         cleanupProvider(id).catch(console.error);
     }
     resp.code(204);

@@ -11,7 +11,8 @@
     "skipLibCheck": true
   },
   "exclude": [
-    "./node_modules"
+    "./node_modules",
+    "./frontend"
   ],
   "ts-node": {
     "esm": true,
