@@ -42,7 +42,7 @@ async function init() {
     await matchListProviderCollection.find().forEach(doc => {
         const provider = MatchListProvider.fromDocument(doc as MatchListProviderDocument);
         if (provider.nextUpdate && provider.nextUpdate.getTime() - (new Date()).getTime() > 0) {
-            const diff = provider.nextUpdate.getTime() - (new Date()).getTime();
+            const diff = Math.min(provider.nextUpdate.getTime() - (new Date()).getTime(), 86400);
             scheduleQueryProvider(diff, provider).catch(console.error);
         } else {
             scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
@@ -121,7 +121,6 @@ async function queryProvider(provider: MatchListProvider) {
         if (entry.hasResult) {
             secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 3600);
         } else {
-            console.log(secondsTillNextUpdate);
             const diffSecs = (entry.date!.getTime() - (new Date()).getTime()) / 1000;
             if (diffSecs + 5400 > 0) {
                 secondsTillNextUpdate = Math.min(secondsTillNextUpdate, diffSecs + 5400);
