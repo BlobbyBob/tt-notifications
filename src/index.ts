@@ -121,6 +121,7 @@ async function queryProvider(provider: MatchListProvider) {
         if (entry.hasResult) {
             secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 3600);
         } else {
+            console.log(secondsTillNextUpdate);
             const diffSecs = (entry.date!.getTime() - (new Date()).getTime()) / 1000;
             if (diffSecs + 5400 > 0) {
                 secondsTillNextUpdate = Math.min(secondsTillNextUpdate, diffSecs + 5400);
