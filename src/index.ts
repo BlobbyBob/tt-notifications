@@ -108,8 +108,10 @@ async function queryProvider(provider: MatchListProvider) {
         }
     });
 
-    const res = await matchEntryCollection.insertMany(toInsert.map(e => e.toDocument()));
-    console.log(`Inserted ${res.insertedCount} new matches.`);
+    if (toInsert.length > 0) {
+        const res = await matchEntryCollection.insertMany(toInsert.map(e => e.toDocument()));
+        console.log(`Inserted ${res.insertedCount} new matches.`);
+    }
 
     // Compute next update timer
     let secondsTillNextUpdate = 86400;
