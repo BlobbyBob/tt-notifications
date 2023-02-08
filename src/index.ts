@@ -367,7 +367,7 @@ fastify.post("/api/testmsg", (req, resp) => {
     const subscriber = new SubscriberData(endpoint, p256dhKey, authKey);
     webpush.sendNotification(subscriber.toWebPushOptions(), JSON.stringify({msg: "Testnachricht"}), {TTL: 30}).catch(console.error);
 });
-fastify.listen({port: 8080}, err => {
+fastify.listen({host: "::", port: 8080}, err => {
     if (err) throw err;
 });
 
