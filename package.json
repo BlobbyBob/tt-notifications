@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "deploy": "ts-node src/index",
     "start": "dotenv run ts-node src/index",
     "vapid": "web-push generate-vapid-keys"
   },

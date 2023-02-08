@@ -371,7 +371,7 @@ fastify.listen({port: 8080}, err => {
     if (err) throw err;
 });
 
-// init().catch(console.error);
+init().catch(console.error);
 
 function signalHandler() {
     console.log("Received interrupt. Exiting gracefully ...");
