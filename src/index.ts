@@ -18,6 +18,7 @@ import {clearTimeout} from 'timers';
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY ?? "";
+const notificationTtl = Number.parseInt(process.env.TTL ?? "43200");
 const mongoClient = new MongoClient(process.env.MONGO_URL ?? "");
 const db = mongoClient.db(process.env.MONGO_DATABASE ?? "tt-notifications");
 
@@ -137,7 +138,7 @@ async function notifySubscribers(providers: ObjectId[], msg: string) {
         providers: {$in: providers}
     }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
-        sending.push(webpush.sendNotification(subscriber.toWebPushOptions(), msg, {TTL: 30}).catch(console.error));
+        sending.push(webpush.sendNotification(subscriber.toWebPushOptions(), msg, {TTL: notificationTtl}).catch(console.error));
         // todo on repeated errors delete subscriber
     });
     return Promise.all(sending);
