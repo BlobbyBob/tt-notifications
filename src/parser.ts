@@ -89,14 +89,17 @@ function parseTable(data: string, providerId: ObjectId) {
         if (row[0] != "") {
             lastDate = row[0].split(" ").pop() ?? "";
         }
-        let hasReport = row[15+offset].length > 20;
-        table.push(new MatchEntry([lastDate,
-                row[2].split(" ", 2)[0]],
-            row[6+offset],
-            row[8+offset],
-            row[14+offset].split("\n", 2)[0],
-            hasReport,
-            [providerId]));
+        let resultHtml = row[15 + offset];
+
+        let date: [string, string] = [lastDate, row[2].split(" ", 2)[0]];
+        let [teamA, teamB] = [row[6 + offset], row[8 + offset]];
+        let result = row[14 + offset].split("\n", 2)[0].trim();
+        let hasReport = resultHtml.length > 20;
+        if (resultHtml.indexOf("livescoring") >= 0) {
+            result = "";
+            hasReport = false;
+        }
+        table.push(new MatchEntry(date, teamA, teamB, result, hasReport, [providerId]));
     }
 
     return table;
