@@ -41,12 +41,7 @@ async function scheduleQueryProvider(seconds: number, provider: MatchListProvide
 async function init() {
     await matchListProviderCollection.find().forEach(doc => {
         const provider = MatchListProvider.fromDocument(doc as MatchListProviderDocument);
-        if (provider.nextUpdate && provider.nextUpdate.getTime() - (new Date()).getTime() > 0) {
-            const diff = Math.min(provider.nextUpdate.getTime() - (new Date()).getTime(), 86400);
-            scheduleQueryProvider(diff, provider).catch(console.error);
-        } else {
-            scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
-        }
+        scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
     });
 }
 
