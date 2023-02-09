@@ -85,8 +85,9 @@ async function queryProvider(provider: MatchListProvider) {
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
-                    const msg = `Spielbericht für ${match.teamA} - ${match.teamB} (${provider.name}) ist online.`;
-                    notifySubscribers(oldEntry.providers, JSON.stringify({msg}));
+                    notifySubscribers(oldEntry.providers, match, true);
+                } else if (match.hasResult) {
+                    notifySubscribers(oldEntry.providers, match, false);
                 }
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
                     {$set: {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}}));
@@ -127,14 +128,41 @@ async function queryProvider(provider: MatchListProvider) {
     scheduleQueryProvider(secondsTillNextUpdate, provider).catch(console.error);
 }
 
-async function notifySubscribers(providers: ObjectId[], msg: string) {
+async function firstSubscribedProviderName(providers: ObjectId[], subscriber: SubscriberData, providerCache: Map<string, string>): Promise<string> {
+    for (const p of providers) {
+        if (subscriber.containsProvider(p)) {
+            if (providerCache.has(p.toHexString())) {
+                return providerCache.get(p.toHexString())!;
+            } else {
+                const pDoc = await matchListProviderCollection.findOne({_id: p});
+                if (pDoc) {
+                    const prov = MatchListProvider.fromDocument(pDoc as MatchListProviderDocument);
+                    providerCache.set(p.toHexString(), prov.name);
+                    return prov.name;
+                }
+            }
+        }
+    }
+    return ""; // should not be reachable
+}
+
+async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean) {
+    // todo on repeated errors delete subscriber
+
     const sending: Promise<any>[] = [];
+    const providerCache = new Map<string, string>();
     await subscriberDataCollection.find({
         providers: {$in: providers}
     }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
-        sending.push(webpush.sendNotification(subscriber.toWebPushOptions(), msg, {TTL: notificationTtl}).catch(console.error));
-        // todo on repeated errors delete subscriber
+        sending.push(firstSubscribedProviderName(providers, subscriber, providerCache).then(providerName => {
+            const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${providerName}) online` :
+                `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
+            webpush.sendNotification(subscriber.toWebPushOptions(),
+                JSON.stringify({msg: msg}),
+                {TTL: notificationTtl}).then(() =>
+                console.log("Pushed message", JSON.stringify({msg: msg}), subscriber.toWebPushOptions()));
+        }).catch(console.error));
     });
     return Promise.all(sending);
 }
@@ -260,7 +288,7 @@ fastify.post("/api/provider/:provider/subscribe", async (req, resp) => {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
     }
-    const providerDoc = await         matchListProviderCollection.findOne({_id: id})
+    const providerDoc = await matchListProviderCollection.findOne({_id: id});
     if (!providerDoc) {
         resp.code(404).type("application/json");
         return {errmsg: "not found"};
