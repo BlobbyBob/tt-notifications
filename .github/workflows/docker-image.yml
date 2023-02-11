@@ -34,7 +34,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/${{ env.IMAGE_NAME }}:latest
+          images: ghcr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
 
       - name: Build and push Docker image
         id: build-and-push
