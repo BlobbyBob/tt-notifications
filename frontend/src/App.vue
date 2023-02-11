@@ -61,7 +61,7 @@ function login() {
       uid.value = data.uid;
       localStorage.setItem("uid", uid.value ?? "");
       setStatus("Erfolgreich aktiviert");
-    }).catch(() => {
+    }).then(loadProvider).catch(() => {
       setStatus("Aktivierung fehlgeschlagen");
     });
   });
@@ -90,8 +90,7 @@ function loadProvider() {
         "Authorization": uid.value
       }
     }).then((resp) => {
-      if (resp.status < 300) setStatus("Provider geladen");
-      else setStatus("Fehler beim Laden");
+      if (resp.status >= 300) setStatus("Fehler beim Laden der Spielpläne");
       return resp.json();
     }).then(data => providers.value = data);
   }
@@ -131,6 +130,7 @@ function addProvider(ev: Event) {
 
 onMounted(() => {
   setStatus(uid.value ? "Angemeldet" : "Nicht angemeldet");
+  loadProvider();
 });
 </script>
 
@@ -139,29 +139,29 @@ onMounted(() => {
     <h1 class="mt-4">TT Benachrichtigungen</h1>
     <h4>Status: {{ status }}</h4>
     <button class="btn btn-primary" @click="login">Anmelden</button>
-    <br>
-    <button class="btn btn-primary" @click="testMessage">Testnachricht</button>
-    <br>
-    <button class="btn btn-primary" @click="loadProvider">Provider laden</button>
+    <button class="btn btn-primary ms-3" @click="testMessage">Testnachricht</button>
     <hr>
-    <form @submit.prevent="addProvider">
-      <div class="row">
-        <div class="col-auto">
-          <label for="urlInput">URL:</label>
+    <div v-show="uid.value">
+      <h3>Spielplan hinzufügen</h3>
+      <form @submit.prevent="addProvider">
+        <div class="row">
+          <div class="col-auto">
+            <label for="urlInput" class="pt-1">URL:</label>
+          </div>
+          <div class="col">
+            <input type="url" name="url" class="form-control" id="urlInput">
+          </div>
         </div>
-        <div class="col">
-          <input type="url" name="url" class="form-control" id="urlInput">
+        <div class="row mt-3">
+          <div class="col-12 d-md-grid">
+            <button type="submit" class="btn btn-success">Spielplan hinzufügen</button>
+          </div>
         </div>
-      </div>
-      <div class="row">
-        <div class="col-12">
-          <button type="submit" class="btn btn-success">Provider hinzufügen</button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </div>
     <hr>
     <div v-if="providers" class="row">
-      <h3>Liste der Provider</h3>
+      <h3>Liste der Spielpläne</h3>
       <table class="table">
         <thead>
         <tr>
@@ -172,7 +172,7 @@ onMounted(() => {
         </thead>
         <tbody>
         <tr v-for="provider of providers" :key="provider.id">
-          <td><input type="checkbox" :value="provider.subscribed"
+          <td><input type="checkbox" :checked="provider.subscribed"
                      @input="setSubscriptionStatus(provider.id, !provider.subscribed)"></td>
           <td>{{ provider.name }}</td>
           <td><a :href="provider.url" target="_blank">{{ provider.url }}</a></td>
