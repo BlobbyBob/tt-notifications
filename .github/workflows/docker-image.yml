@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          tags: ghcr.io/$IMAGE_NAME:latest
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: true
