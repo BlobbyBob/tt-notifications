@@ -141,7 +141,7 @@ onMounted(() => {
     <button class="btn btn-primary" @click="login">Anmelden</button>
     <button class="btn btn-primary ms-3" @click="testMessage">Testnachricht</button>
     <hr>
-    <div v-show="uid.value">
+    <div v-show="uid">
       <h3>Spielplan hinzufügen</h3>
       <form @submit.prevent="addProvider">
         <div class="row">
