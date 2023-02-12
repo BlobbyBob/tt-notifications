@@ -82,6 +82,11 @@ async function queryProvider(provider: MatchListProvider) {
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
                     {$set: {providers: oldEntry.providers}}));
             }
+            if (!oldEntry.league && match.league) {
+                oldEntry.league = match.league;
+                updates.push(matchEntryCollection.updateOne({_id: doc._id},
+                    {$set: {league: oldEntry.league}}));
+            }
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
