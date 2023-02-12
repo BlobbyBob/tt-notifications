@@ -181,7 +181,7 @@ onMounted(() => {
         <tr v-for="provider of providers" :key="provider.id">
           <td><input type="checkbox" :checked="provider.subscribed"
                      @input="setSubscriptionStatus(provider.id, !provider.subscribed)"></td>
-          <td>{{ provider.name }} <span class="badge" :class="[getProviderType(provider.url)[1]]">{{ getProviderType(provider.url)[0] }}</span></td>
+          <td><span class="badge" :class="[getProviderType(provider.url)[1]]">{{ getProviderType(provider.url)[0] }}</span> {{ provider.name }}</td>
           <td><a :href="provider.url" target="_blank">{{ provider.url }}</a></td>
         </tr>
         </tbody>

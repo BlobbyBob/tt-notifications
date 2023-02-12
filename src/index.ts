@@ -156,7 +156,8 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
     }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
         sending.push(firstSubscribedProviderName(providers, subscriber, providerCache).then(providerName => {
-            const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${providerName}) online` :
+            const leagueId = match.league ? match.league + ", " : "";
+            const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${leagueId}${providerName}) online` :
                 `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
             return webpush.sendNotification(subscriber.toWebPushOptions(),
                 JSON.stringify({msg: msg}),

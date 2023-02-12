@@ -28,6 +28,7 @@ export class MatchEntry extends Model {
     result: string;
     hasReport: boolean;
     providers: ObjectId[];
+    league?: string;
 
     private dateFormat = Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
@@ -41,7 +42,7 @@ export class MatchEntry extends Model {
         timeZone: "Europe/Berlin"
     });
 
-    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean, providers: ObjectId[]) {
+    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean, providers: ObjectId[], league?: string) {
         super();
         if (date instanceof Date) {
             this.date = date;
@@ -57,10 +58,11 @@ export class MatchEntry extends Model {
         this.result = result;
         this.hasReport = hasReport;
         this.providers = providers;
+        this.league = league;
     }
 
     static fromDocument(doc: MatchEntryDocument) {
-        const obj: MatchEntry = new MatchEntry(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport, doc.providers);
+        const obj: MatchEntry = new MatchEntry(doc.date, doc.teamA, doc.teamB, doc.hasResult ? "?" : "", doc.hasReport, doc.providers, doc.league);
         obj.id = doc._id;
         return obj;
     }
@@ -105,7 +107,8 @@ export class MatchEntry extends Model {
             teamB: this.teamB,
             hasResult: this.hasResult,
             hasReport: this.hasReport,
-            providers: this.providers
+            providers: this.providers,
+            league: this.league
         };
     }
 }
@@ -118,6 +121,7 @@ export interface MatchEntryDocument {
     hasResult: boolean;
     hasReport: boolean;
     providers: ObjectId[];
+    league?: string;
 }
 
 export class SubscriberData extends Model {
