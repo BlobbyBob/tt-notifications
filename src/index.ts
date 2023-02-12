@@ -198,6 +198,26 @@ async function serveFile(req: FastifyRequest, resp: FastifyReply) {
     });
 }
 
+async function authenticateSubscriber(req: FastifyRequest, resp: FastifyReply): Promise<SubscriberData> {
+    try {
+        let uid = new ObjectId(req.headers.authorization);
+        let doc = await subscriberDataCollection.findOne({_id: uid});
+
+        return new Promise<SubscriberData>((resolve, reject) => {
+                if (!doc) {
+                    resp.code(403).type("application/json").send({errmsg: "not authorized"});
+                    reject();
+                }
+                resolve(SubscriberData.fromDocument(doc as SubscriberDataDocument));
+        });
+    } catch (e) {
+        resp.code(403).type("application/json").send({errmsg: "not authorized"});
+        return new Promise<SubscriberData>((resolve, reject) => {
+            reject();
+        });
+    }
+}
+
 fastify.setNotFoundHandler(serveFile);
 
 fastify.get("/api/vapidpubkey", (req, resp) => {

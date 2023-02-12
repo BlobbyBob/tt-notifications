@@ -30,7 +30,7 @@ export async function validateUrl(html: string): Promise<[string, number]> {
                 }
             }
         }
-        title = title.replace(" -", "").trim();
+        title = title.replaceAll(" -", "").trim();
 
         // Check data table
         {

@@ -11,6 +11,7 @@ interface Provider {
 const status = ref("");
 const uid = ref(localStorage.getItem("uid"));
 const providers = ref([] as Provider[]);
+const providerTypes: [string, string][] = [["Verein", "text-bg-primary"], ["Mannschaft", "text-bg-warning"], ["Liga", "text-bg-info"]];
 
 // urlBase64ToUint8Array() source: https://github.com/mdn/serviceworker-cookbook
 function urlBase64ToUint8Array(base64String: string) {
@@ -26,6 +27,12 @@ function urlBase64ToUint8Array(base64String: string) {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray;
+}
+
+function getProviderType(url: string): [string, string] {
+  if (url.indexOf("/verein/") > -1) return providerTypes[0];
+  if (url.indexOf("/mannschaft/") > -1) return providerTypes[1];
+  return providerTypes[2];
 }
 
 function setStatus(msg: string) {
@@ -139,7 +146,7 @@ onMounted(() => {
     <h1 class="mt-4">TT Benachrichtigungen</h1>
     <h4>Status: {{ status }}</h4>
     <button class="btn btn-primary" @click="login">Anmelden</button>
-    <button class="btn btn-primary ms-3" @click="testMessage">Testnachricht</button>
+    <button class="btn btn-primary ms-3" v-show="uid" @click="testMessage">Testnachricht</button>
     <hr>
     <div v-show="uid">
       <h3>Spielplan hinzufügen</h3>
@@ -174,7 +181,7 @@ onMounted(() => {
         <tr v-for="provider of providers" :key="provider.id">
           <td><input type="checkbox" :checked="provider.subscribed"
                      @input="setSubscriptionStatus(provider.id, !provider.subscribed)"></td>
-          <td>{{ provider.name }}</td>
+          <td>{{ provider.name }} <span class="badge" :class="[getProviderType(provider.url)[1]]">{{ getProviderType(provider.url)[0] }}</span></td>
           <td><a :href="provider.url" target="_blank">{{ provider.url }}</a></td>
         </tr>
         </tbody>
