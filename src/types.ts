@@ -29,6 +29,7 @@ export class MatchEntry extends Model {
     hasReport: boolean;
     providers: ObjectId[];
     league?: string;
+    reportUrl?: string;
 
     private dateFormat = Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
@@ -42,7 +43,7 @@ export class MatchEntry extends Model {
         timeZone: "Europe/Berlin"
     });
 
-    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean, providers: ObjectId[], league?: string) {
+    constructor(date: Date | [string, string], teamA: string, teamB: string, result: string, hasReport: boolean, providers: ObjectId[], league?: string, reportUrl?: string) {
         super();
         if (date instanceof Date) {
             this.date = date;
@@ -59,6 +60,7 @@ export class MatchEntry extends Model {
         this.hasReport = hasReport;
         this.providers = providers;
         this.league = league;
+        this.reportUrl = reportUrl;
     }
 
     static fromDocument(doc: MatchEntryDocument) {
@@ -108,7 +110,8 @@ export class MatchEntry extends Model {
             hasResult: this.hasResult,
             hasReport: this.hasReport,
             providers: this.providers,
-            league: this.league
+            league: this.league,
+            reportUrl: this.reportUrl
         };
     }
 }
@@ -122,6 +125,7 @@ export interface MatchEntryDocument {
     hasReport: boolean;
     providers: ObjectId[];
     league?: string;
+    reportUrl?: string;
 }
 
 export class SubscriberData extends Model {

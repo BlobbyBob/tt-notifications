@@ -87,6 +87,11 @@ async function queryProvider(provider: MatchListProvider) {
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
                     {$set: {league: oldEntry.league}}));
             }
+            if (!oldEntry.reportUrl && match.reportUrl) {
+                oldEntry.reportUrl = match.reportUrl;
+                updates.push(matchEntryCollection.updateOne({_id: doc._id},
+                    {$set: {reportUrl: oldEntry.reportUrl}}));
+            }
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
@@ -165,7 +170,7 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
             const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${leagueId}${providerName}) online` :
                 `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
             return webpush.sendNotification(subscriber.toWebPushOptions(),
-                JSON.stringify({msg: msg}),
+                JSON.stringify({id: match.id.toHexString(), msg: msg, hasReport: hasReport}),
                 {TTL: notificationTtl});
         }).catch(console.error));
     });
@@ -225,6 +230,24 @@ async function authenticateSubscriber(req: FastifyRequest, resp: FastifyReply): 
 }
 
 fastify.setNotFoundHandler(serveFile);
+
+fastify.get("/redirect-report/:report", async (req, resp) => {
+    let report;
+    try {
+        report = new ObjectId((req.params as any).report);
+        let doc = await matchEntryCollection.findOne({_id: report});
+        if (!doc || !doc.reportUrl) {
+            resp.code(404).type("text/plain"); // todo better error page
+            return "Not Found";
+        }
+        resp.code(302).header("location", doc.reportUrl);
+        return "";
+    } catch (e) {
+        resp.code(404).type("text/plain");
+        return "Not Found";
+    }
+
+});
 
 fastify.get("/api/vapidpubkey", (req, resp) => {
     resp.type("text/plain").send(vapidPublicKey);

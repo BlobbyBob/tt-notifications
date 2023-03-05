@@ -97,11 +97,17 @@ function parseTable(data: string, providerId: ObjectId) {
         if (offset) league = row[6];
         let result = row[14 + offset].split("\n", 2)[0].trim();
         let hasReport = resultHtml.length > 20;
+        let reportUrl;
         if (resultHtml.indexOf("livescoring") >= 0) {
             result = "";
             hasReport = false;
         }
-        table.push(new MatchEntry(date, teamA, teamB, result, hasReport, [providerId], league));
+        resultHtml.match(/href="([^"]+)"/)?.forEach(url => {
+            if (url[0] == "/") reportUrl = "https://www.mytischtennis.de" + url;
+            else if (url.slice(0, 5) == "https") reportUrl = url;
+        })
+        if (resultHtml.match(/href="([^"]+)"/))
+        table.push(new MatchEntry(date, teamA, teamB, result, hasReport, [providerId], league, reportUrl));
     }
 
     return table;
