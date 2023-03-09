@@ -157,8 +157,6 @@ async function firstSubscribedProviderName(providers: ObjectId[], subscriber: Su
 }
 
 async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean) {
-    // todo on repeated errors delete subscriber
-
     const sending: Promise<any>[] = [];
     const providerCache = new Map<string, string>();
     await subscriberDataCollection.find({
@@ -171,7 +169,10 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
                 `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
             return webpush.sendNotification(subscriber.toWebPushOptions(),
                 JSON.stringify({id: match.id.toHexString(), msg: msg, hasReport: hasReport}),
-                {TTL: notificationTtl});
+                {TTL: notificationTtl}).catch(resp => {
+                console.warn(resp);
+                return subscriberDataCollection.deleteOne({_id: subscriber.id});
+            });
         }).catch(console.error));
     });
     return Promise.all(sending);
@@ -215,11 +216,11 @@ async function authenticateSubscriber(req: FastifyRequest, resp: FastifyReply): 
         let doc = await subscriberDataCollection.findOne({_id: uid});
 
         return new Promise<SubscriberData>((resolve, reject) => {
-                if (!doc) {
-                    resp.code(403).type("application/json").send({errmsg: "not authorized"});
-                    reject();
-                }
-                resolve(SubscriberData.fromDocument(doc as SubscriberDataDocument));
+            if (!doc) {
+                resp.code(403).type("application/json").send({errmsg: "not authorized"});
+                reject();
+            }
+            resolve(SubscriberData.fromDocument(doc as SubscriberDataDocument));
         });
     } catch (e) {
         resp.code(403).type("application/json").send({errmsg: "not authorized"});
