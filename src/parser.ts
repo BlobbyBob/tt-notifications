@@ -4,6 +4,7 @@ import render from 'dom-serializer';
 import {ElementType} from 'domelementtype';
 import {MatchEntry, MatchListProvider} from './types';
 import {ObjectId} from 'mongodb';
+import {decode} from 'html-entities';
 
 export async function validateUrl(html: string): Promise<[string, number]> {
     let title = "";
@@ -103,8 +104,8 @@ function parseTable(data: string, providerId: ObjectId) {
             hasReport = false;
         }
         resultHtml.match(/href="([^"]+)"/)?.forEach(url => {
-            if (url[0] == "/") reportUrl = "https://www.mytischtennis.de" + url;
-            else if (url.slice(0, 5) == "https") reportUrl = url;
+            if (url[0] == "/") reportUrl = "https://www.mytischtennis.de" + decode(url);
+            else if (url.slice(0, 5) == "https") reportUrl = decode(url);
         })
         if (resultHtml.match(/href="([^"]+)"/))
         table.push(new MatchEntry(date, teamA, teamB, result, hasReport, [providerId], league, reportUrl));
