@@ -80,6 +80,7 @@ export class MatchEntry extends Model {
             this.date = new Date();
             this.date.setFullYear(2000 + Number.parseInt(y), Number.parseInt(m) - 1, Number.parseInt(d));
             this.date.setHours(Number.parseInt(H), Number.parseInt(M), 0, 0);
+            this.date = new Date(this.date.getTime() + this.date.getTimezoneOffset() * 60000);
         } catch (e) {
             console.warn("Could not parse date", e);
             this.date = undefined;
