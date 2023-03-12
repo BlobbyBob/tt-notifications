@@ -139,6 +139,7 @@ async function queryProvider(provider: MatchListProvider) {
             }
         }
     });
+    console.log(`Next update for ${provider.name} in ${secondsTillNextUpdate} seconds`);
     scheduleQueryProvider(secondsTillNextUpdate, provider).catch(console.error);
 }
 
