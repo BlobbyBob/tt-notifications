@@ -66,6 +66,10 @@ async function queryProvider(provider: MatchListProvider) {
 
     const updates: Promise<UpdateResult>[] = [];
 
+    // If a subscriber endpoint is broken, we want to remember that
+    // Since the updates are asynchronous, we need some temporary data structure
+    const blocklist = new Array<ObjectId>();
+
     // Add new entries to DB
     await matchEntryCollection.find({
         _id: {
@@ -95,9 +99,9 @@ async function queryProvider(provider: MatchListProvider) {
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
-                    notifySubscribers(oldEntry.providers, match, true);
+                    notifySubscribers(oldEntry.providers, match, true, blocklist);
                 } else if (match.hasResult) {
-                    notifySubscribers(oldEntry.providers, match, false);
+                    notifySubscribers(oldEntry.providers, match, false, blocklist);
                 }
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
                     {$set: {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}}));
@@ -121,17 +125,17 @@ async function queryProvider(provider: MatchListProvider) {
     }
 
     // Compute next update timer
-    let secondsTillNextUpdate = 86400;
+    let secondsTillNextUpdate = 28800;
     entries.forEach(entry => {
         if (entry.hasReport) return;
         if (entry.hasResult) {
-            secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 3600);
+            secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 1200);
         } else {
             const diffSecs = (entry.date!.getTime() - (new Date()).getTime()) / 1000;
             if (diffSecs + 5400 > 0) {
                 secondsTillNextUpdate = Math.min(secondsTillNextUpdate, diffSecs + 5400);
             } else {
-                secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 900);
+                secondsTillNextUpdate = Math.min(secondsTillNextUpdate, 600);
             }
         }
     });
@@ -156,7 +160,7 @@ async function firstSubscribedProviderName(providers: ObjectId[], subscriber: Su
     return ""; // should not be reachable
 }
 
-async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean) {
+async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean, blocklist?: ObjectId[]) {
     const sending: Promise<any>[] = [];
     const providerCache = new Map<string, string>();
     await subscriberDataCollection.find({
@@ -164,6 +168,7 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
     }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
         sending.push(firstSubscribedProviderName(providers, subscriber, providerCache).then(providerName => {
+            if (blocklist?.includes(subscriber.id)) return;
             const leagueId = match.league ? match.league + ", " : "";
             const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${leagueId}${providerName}) online` :
                 `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
@@ -171,6 +176,7 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
                 JSON.stringify({id: match.id.toHexString(), msg: msg, hasReport: hasReport}),
                 {TTL: notificationTtl}).catch(resp => {
                 console.warn(resp);
+                blocklist?.push(subscriber.id);
                 return subscriberDataCollection.deleteOne({_id: subscriber.id});
             });
         }).catch(console.error));

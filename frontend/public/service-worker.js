@@ -23,9 +23,12 @@ self.addEventListener("notificationclick", ev => {
     const url = `${self.location.origin}/redirect-report/${id}`;
     if (hasReport && id)
         ev.waitUntil(
-            self.clients.openWindow(url).then(clientWindow => {
-                console.log(clientWindow);
-                if (clientWindow) return clientWindow.focus();
-            }).then(console.log).catch(console.error)
+            Promise.all([
+                self.clients.matchAll().finally(console.log),
+                self.clients.openWindow(url).then(clientWindow => {
+                    console.log(clientWindow);
+                    if (clientWindow) return clientWindow.focus();
+                }).then(console.log).catch(console.error)
+            ])
         );
 })
