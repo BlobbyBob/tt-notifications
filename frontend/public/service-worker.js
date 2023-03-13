@@ -25,7 +25,12 @@ self.addEventListener("notificationclick", ev => {
         ev.waitUntil(
             Promise.all([
                 self.clients.matchAll().finally(console.log),
-                self.clients.openWindow(url).then(clientWindow => {
+                (new Promise(resolve => setTimeout(resolve, 2000))).then(() => self.clients.openWindow(url)).catch(err => {
+                    console.warn("clients.openWindow error", err);
+                    self.clients.matchAll().finally(clients => {
+                        console.log(clients.length, clients);
+                    });
+                }).then(clientWindow => {
                     console.log(clientWindow);
                     if (clientWindow) return clientWindow.focus();
                 }).then(console.log).catch(console.error)
