@@ -43,6 +43,7 @@ async function init() {
         const provider = MatchListProvider.fromDocument(doc as MatchListProviderDocument);
         scheduleQueryProvider(Math.random() * 10, provider).catch(console.error);
     });
+    setTimeout(cleanupSubscribers, 86400000, then => setTimeout(cleanupSubscribers, 86400000, then));
 }
 
 async function queryProvider(provider: MatchListProvider) {
@@ -65,10 +66,6 @@ async function queryProvider(provider: MatchListProvider) {
     const entriesById = new Map<string, [MatchEntry, boolean]>(entries.map(e => [e.id.toHexString(), [e, false]]));
 
     const updates: Promise<UpdateResult>[] = [];
-
-    // If a subscriber endpoint is broken, we want to remember that
-    // Since the updates are asynchronous, we need some temporary data structure
-    const blocklist = new Array<ObjectId>();
 
     // Add new entries to DB
     await matchEntryCollection.find({
@@ -99,9 +96,9 @@ async function queryProvider(provider: MatchListProvider) {
             if (oldEntry.hasResult != match.hasResult ||
                 oldEntry.hasReport != match.hasReport) {
                 if (match.hasReport) {
-                    notifySubscribers(oldEntry.providers, match, true, blocklist);
+                    notifySubscribers(oldEntry.providers, match, true);
                 } else if (match.hasResult) {
-                    notifySubscribers(oldEntry.providers, match, false, blocklist);
+                    notifySubscribers(oldEntry.providers, match, false);
                 }
                 updates.push(matchEntryCollection.updateOne({_id: doc._id},
                     {$set: {hasResult: entry[0].hasResult, hasReport: entry[0].hasReport}}));
@@ -161,7 +158,7 @@ async function firstSubscribedProviderName(providers: ObjectId[], subscriber: Su
     return ""; // should not be reachable
 }
 
-async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean, blocklist?: ObjectId[]) {
+async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasReport: boolean) {
     const sending: Promise<any>[] = [];
     const providerCache = new Map<string, string>();
     await subscriberDataCollection.find({
@@ -169,17 +166,14 @@ async function notifySubscribers(providers: ObjectId[], match: MatchEntry, hasRe
     }).forEach(doc => {
         const subscriber = SubscriberData.fromDocument(doc as SubscriberDataDocument);
         sending.push(firstSubscribedProviderName(providers, subscriber, providerCache).then(providerName => {
-            if (blocklist?.includes(subscriber.id)) return;
             const leagueId = match.league ? match.league + ", " : "";
             const msg = hasReport ? `Spielbericht für ${match.teamA} ${match.result.length > 1 ? match.result : "-"} ${match.teamB} (${leagueId}${providerName}) online` :
                 `Ergebnis: ${match.teamA} ${match.result} ${match.teamB} (${providerName})`;
             return webpush.sendNotification(subscriber.toWebPushOptions(),
                 JSON.stringify({id: match.id.toHexString(), msg: msg, hasReport: hasReport}),
-                {TTL: notificationTtl}).catch(resp => {
-                console.warn(resp);
-                blocklist?.push(subscriber.id);
-                return subscriberDataCollection.deleteOne({_id: subscriber.id});
-            });
+                {TTL: notificationTtl}).then(
+                () => subscriberDataCollection.updateOne({_id: subscriber.id}, {$inc: {errors: -1}})
+            ).catch(() => subscriberDataCollection.updateOne({_id: subscriber.id}, {$inc: {errors: 1}}));
         }).catch(console.error));
     });
     return Promise.all(sending);
@@ -194,6 +188,16 @@ async function cleanupProvider(providerId: ObjectId) {
             await matchListProviderCollection.deleteOne({_id: providerId});
         }
     }
+}
+
+// todo what is the correct typescript expression for this parameter
+async function cleanupSubscribers(then: (then: (a: any) => void) => void) {
+    await subscriberDataCollection.updateMany({}, {$max: {errors: 0}});
+    const res = await subscriberDataCollection.deleteMany({errors: {$gt: 64}});
+    if (res.deletedCount) {
+        console.log(`Deleted ${res.deletedCount} subscribers with errors`);
+    }
+    then(then);
 }
 
 const fastify = Fastify({logger: true});

@@ -134,12 +134,14 @@ export class SubscriberData extends Model {
     authKey: string;
     p256dhKey: string;
     subscriptions: ObjectId[] = [];
+    errors: number;
 
-    constructor(endpoint: string, p256dhKey: string, authKey: string) {
+    constructor(endpoint: string, p256dhKey: string, authKey: string, errors: number = 0) {
         super();
         this.endpoint = endpoint;
         this.authKey = authKey;
         this.p256dhKey = p256dhKey;
+        this.errors = errors;
     }
 
     hash(): Uint8Array {
@@ -148,7 +150,7 @@ export class SubscriberData extends Model {
     }
 
     static fromDocument(doc: SubscriberDataDocument): SubscriberData {
-        const obj = new SubscriberData(doc.endpoint, doc.p256dhKey, doc.authKey);
+        const obj = new SubscriberData(doc.endpoint, doc.p256dhKey, doc.authKey, doc.errors);
         obj.id = doc._id;
         obj.subscriptions = doc.subscriptions;
         return obj;
@@ -167,7 +169,8 @@ export class SubscriberData extends Model {
             endpoint: this.endpoint,
             authKey: this.authKey,
             p256dhKey: this.p256dhKey,
-            subscriptions: this.subscriptions
+            subscriptions: this.subscriptions,
+            errors: this.errors
         };
     }
 
@@ -188,6 +191,7 @@ export interface SubscriberDataDocument {
     authKey: string;
     p256dhKey: string;
     subscriptions: ObjectId[];
+    errors: number;
 }
 
 export class MatchListProvider extends Model {
