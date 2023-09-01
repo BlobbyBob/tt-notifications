@@ -8,13 +8,13 @@ RUN apt update && apt install -y git && \
 
 WORKDIR /build/frontend
 
-RUN npm ci && npm run build
+RUN npm i && npm run build
 
 WORKDIR /build
 
 RUN rm -r public && cp -r frontend/dist/ public && rm -r frontend
 
-RUN npm ci
+RUN npm i
 
 FROM node
 
