@@ -97,7 +97,10 @@ function loadProvider() {
         "Authorization": uid.value
       }
     }).then((resp) => {
-      if (resp.status >= 300) setStatus("Fehler beim Laden der Spielpläne");
+      if (resp.status >= 300) {
+        setStatus("Fehler beim Laden der Spielpläne");
+        return [];
+      }
       return resp.json();
     }).then(data => providers.value = data);
   }
@@ -135,6 +138,11 @@ function addProvider(ev: Event) {
   }
 }
 
+function reset() {
+  localStorage.removeItem("uid");
+  location.reload();
+}
+
 onMounted(() => {
   setStatus(uid.value ? "Angemeldet" : "Nicht angemeldet");
   loadProvider();
@@ -146,7 +154,8 @@ onMounted(() => {
     <h1 class="mt-4">TT Benachrichtigungen</h1>
     <h4>Status: {{ status }}</h4>
     <button class="btn btn-primary" @click="login">Anmelden</button>
-    <button class="btn btn-primary ms-3" v-show="uid" @click="testMessage">Testnachricht</button>
+    <button class="btn btn-primary ms-3" v-show="uid" @click="testMessage">Testnachricht</button> 
+    <button class="btn btn-warning ms-3" v-show="uid" @click="reset">Zurücksetzen</button>
     <hr>
     <div v-show="uid">
       <h3>Spielplan hinzufügen</h3>
