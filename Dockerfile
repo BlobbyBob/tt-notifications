@@ -1,4 +1,4 @@
-FROM node AS builder
+FROM node:18 AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ RUN rm -r public && cp -r frontend/dist/ public && rm -r frontend
 
 RUN npm i
 
-FROM node
+FROM node:18
 
 WORKDIR /app
 
