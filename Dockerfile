@@ -2,7 +2,7 @@ FROM node:22 AS builder
 
 WORKDIR /build
 
-RUN curl -fsSL https://get.pnpm.io/install.sh | sh -
+RUN npm install -g pnpm
 
 RUN apt update && apt install -y git && \
     git clone https://github.com/BlobbyBob/tt-notifications.git . && \
@@ -16,7 +16,7 @@ WORKDIR /build
 
 RUN rm -r public && cp -r frontend/dist/ public && rm -r frontend
 
-RUN npm i
+RUN pnpm i
 
 FROM node:22
 
