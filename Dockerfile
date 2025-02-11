@@ -16,7 +16,7 @@ WORKDIR /build
 
 RUN rm -r public && cp -r frontend/dist/ public && rm -r frontend
 
-RUN pnpm i
+RUN pnpm i && pnpx tsc -p tsconfig.json
 
 FROM node:22
 
@@ -24,4 +24,4 @@ WORKDIR /app
 
 COPY --from=builder /build /app
 
-CMD ["npm", "run", "deploy", "--trace-warnings"]
+CMD ["node", "dist/index.js"]

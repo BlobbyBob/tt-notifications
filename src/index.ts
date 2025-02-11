@@ -11,8 +11,8 @@ import {
     MatchListProviderDocument,
     SubscriberData,
     SubscriberDataDocument
-} from './types';
-import {fetchResults, validateUrl} from './parser';
+} from './types.js';
+import {fetchResults, validateUrl} from './parser.js';
 import {clearTimeout} from 'timers';
 
 
