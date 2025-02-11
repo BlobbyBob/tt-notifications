@@ -16,7 +16,7 @@ WORKDIR /build
 
 RUN rm -r public && cp -r frontend/dist/ public && rm -r frontend
 
-RUN pnpm i && pnpx tsc -p tsconfig.json
+RUN pnpm i && npx tsc -p tsconfig.json
 
 FROM node:22
 
