@@ -52,7 +52,7 @@ export async function fetchResults(provider: MatchListProvider): Promise<MatchEn
     const resp = await fetch(provider.url);
     if (resp.status >= 200 && resp.status < 300 && resp.body) {
         const body = await resp.text();
-        const start = body.indexOf("<tbody>"), end = body.indexOf("</tbody>");
+        const start = body.indexOf("<tbody"), end = body.indexOf("</tbody>");
         if (start < 0 || end < 0) {
             console.error(`Unknown data format start=${start}, end=${end}`);
             return [];
@@ -82,21 +82,21 @@ function parseTable(data: string, providerId: ObjectId) {
     let table: MatchEntry[] = [];
 
     for (const row of raw) {
-        if (row.length != 2 * 9 && row.length != 2 * 10) {
+        if (row.length != 2 * 7 && row.length != 2 * 8) {
             console.warn(`Unexpected length of row: ${row.length}. Contents: ${row.join("~")}`);
             continue;
         }
-        const offset = row.length == 2 * 10 ? 2 : 0;
+        const offset = row.length == 2 * 8 ? 2 : 0;
         if (row[0] != "") {
-            lastDate = row[0].split(" ").pop() ?? "";
+            lastDate = row[0].trim().split(" ").pop() ?? "";
         }
-        let resultHtml = row[15 + offset];
+        let resultHtml = row[11 + offset];
 
-        let date: [string, string] = [lastDate, row[2].split(" ", 2)[0]];
+        let date: [string, string] = [row[0].split(" ", 2)[1] ?? lastDate, row[2]];
         let [teamA, teamB] = [row[6 + offset], row[8 + offset]];
         let league;
         if (offset) league = row[6];
-        let result = row[14 + offset].split("\n", 2)[0].trim();
+        let result = row[10 + offset];
         let hasReport = resultHtml.length > 20;
         let reportUrl;
         if (resultHtml.indexOf("livescoring") >= 0) {

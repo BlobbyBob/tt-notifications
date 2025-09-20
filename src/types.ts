@@ -75,14 +75,23 @@ export class MatchEntry extends Model {
 
     parseDate() {
         try {
-            const [d, m, y] = this.dateStr.split(".");
-            const [H, M] = this.timeStr.split(":");
+            let d, m, y, H, M;
+            if (this.dateStr.includes("/"))
+              [m, d, y] = this.dateStr.split("/");
+            else
+              [d, m, y] = this.dateStr.split(".");
+            if (this.timeStr.includes("M")) {
+              [H, M] = this.timeStr.split(" ")[0].split(":");
+              if (this.timeStr.includes("PM")) H = (Number.parseInt(H, 10) + 12).toString();
+            } else
+              [H, M] = this.timeStr.split(":");
             this.date = new Date();
-            this.date.setFullYear(2000 + Number.parseInt(y), Number.parseInt(m) - 1, Number.parseInt(d));
-            this.date.setHours(Number.parseInt(H), Number.parseInt(M), 0, 0);
-            this.date = new Date(this.date.getTime() + this.date.getTimezoneOffset() * 60000);
+            const yi = Number.parseInt(y);
+            this.date.setFullYear(yi > 2000 ? yi : yi + 2000, Number.parseInt(m, 10) - 1, Number.parseInt(d, 10));
+            this.date.setHours(Number.parseInt(H, 10), Number.parseInt(M, 10), 0, 0);
+            this.date = new Date(this.date.getTime() - this.date.getTimezoneOffset() * 60000);
         } catch (e) {
-            console.warn("Could not parse date", e);
+            console.warn("Could not parse date", this.dateStr, this.timeStr, e);
             this.date = undefined;
         }
     }
